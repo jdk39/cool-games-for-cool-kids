@@ -18,27 +18,29 @@
       <p>Log in to keep your win streak going.</p>
     </div>
 
-    <form class="auth-form" action="#" method="post">
+    <form id="login-form" class="auth-form" novalidate>
+
+      <p id="login-message" class="form-message" role="alert" style="display:none; margin:0; font-size:0.9rem;"></p>
 
       <div class="field">
         <label for="login-email">Email</label>
-        <input id="login-email" name="email" type="email" placeholder="you@example.com" required>
+        <input id="login-email" name="email" type="email" placeholder="you@example.com" maxlength="254" autocomplete="email" required>
       </div>
 
       <div class="field">
         <label for="login-password">Password</label>
-        <input id="login-password" name="password" type="password" placeholder="••••••••" required>
+        <input id="login-password" name="password" type="password" placeholder="••••••••" maxlength="256" autocomplete="current-password" required>
       </div>
 
       <div class="form-row">
         <label class="checkbox-label">
-          <input type="checkbox" name="remember">
+          <input type="checkbox" id="login-remember" name="remember" checked>
           Remember me
         </label>
         <a href="#">Forgot password?</a>
       </div>
 
-      <button type="submit" class="btn-primary">Log In</button>
+      <button type="submit" id="login-submit" class="btn-primary">Log In</button>
 
       <div class="divider">
         <div class="line"></div>
@@ -46,7 +48,7 @@
         <div class="line"></div>
       </div>
 
-      <button type="button" class="btn-secondary">Continue as Guest</button>
+      <button type="button" class="btn-secondary" onclick="window.location.href='index.html'">Continue as Guest</button>
 
     </form>
 
@@ -54,6 +56,61 @@
 
   </div>
 </main>
+
+<!-- Cognito library + our auth code -->
+<script src="https://unpkg.com/amazon-cognito-identity-js@6.3.12/dist/amazon-cognito-identity.min.js"></script>
+<script src="auth.js"></script>
+
+<script>
+  const form = document.getElementById("login-form");
+  const msg = document.getElementById("login-message");
+  const submitBtn = document.getElementById("login-submit");
+
+  // Coming from register after verifying email
+  if (new URLSearchParams(location.search).get("verified") === "1") {
+    showMessage(msg, "Account verified! You can log in now.", false);
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const email = document.getElementById("login-email").value.trim().toLowerCase();
+    const password = document.getElementById("login-password").value;
+    const remember = document.getElementById("login-remember").checked;
+
+    // Input validation
+    if (!EMAIL_RE.test(email)) return showMessage(msg, "Please enter a valid email.");
+    if (!password) return showMessage(msg, "Please enter your password.");
+
+    // Prevent double-clicks while waiting
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Logging in...";
+
+    try {
+      await cognitoSignIn(email, password, remember);
+
+      window.location.href = "index.html";
+
+    } catch (err) {
+      if (err.code === "UserNotConfirmedException") {
+        // Email not verified yet: send them to enter the code
+        showMessage(msg, "Please verify your email first. Check your inbox for the code.");
+        setTimeout(() => (window.location.href = "register.html?confirm=" + encodeURIComponent(email)), 1500);
+
+      } else if (err.code === "NotAuthorizedException" || err.code === "UserNotFoundException") {
+        // Same message for both so attackers can't tell which emails exist
+        showMessage(msg, "Incorrect email or password.");
+
+      } else {
+        showMessage(msg, err.message || "Something went wrong. Please try again.");
+      }
+
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Log In";
+    }
+  });
+</script>
 
 </body>
 </html>
