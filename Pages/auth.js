@@ -65,7 +65,7 @@ function cognitoResendCode(email) {
   });
 }
 
-// Log in; Cognito checks the password securely (SRP) and returns login tokens
+// Log in; the password goes to Cognito over HTTPS and Cognito returns login tokens
 function cognitoSignIn(email, password, remember) {
   const pool = getPool(remember);
   const user = new AmazonCognitoIdentity.CognitoUser({
@@ -74,6 +74,7 @@ function cognitoSignIn(email, password, remember) {
     Storage: remember ? window.localStorage : window.sessionStorage
   });
   const details = new AmazonCognitoIdentity.AuthenticationDetails({ Username: email, Password: password });
+  user.setAuthenticationFlowType("USER_PASSWORD_AUTH"); // needs ALLOW_USER_PASSWORD_AUTH on the app client
   return new Promise((resolve, reject) => {
     user.authenticateUser(details, {
       onSuccess: (session) => resolve(session),
