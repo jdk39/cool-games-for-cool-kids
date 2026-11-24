@@ -3,7 +3,6 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Create Account - Cool Games for Cool Kids</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@600;700&family=Inter:wght@400;500;600&display=swap">
 <link rel="stylesheet" href="styles.css">
 </head>
@@ -14,39 +13,55 @@
 
     <div class="auth-header">
       <span class="logo">Cool Games <span>for</span> Cool Kids</span>
-      <h1>Create your account</h1>
-      <p>Join and get games picked just for you.</p>
+      <h1 id="reg-title">Create your account</h1>
+      <p id="reg-subtitle">Join and get games picked just for you.</p>
     </div>
 
-    <form class="auth-form" action="#" method="post">
+    <p id="reg-message" class="form-message" role="alert" style="display:none; margin:0 0 1rem; font-size:0.9rem;"></p>
+
+    <!-- Step 1: sign up -->
+    <form id="register-form" class="auth-form" novalidate>
 
       <div class="field">
         <label for="reg-username">Username</label>
-        <input id="reg-username" name="username" type="text" placeholder="PixelJordan" required>
+        <input id="reg-username" name="username" type="text" placeholder="PixelJordan" maxlength="20" autocomplete="username" required>
       </div>
 
       <div class="field">
         <label for="reg-email">Email</label>
-        <input id="reg-email" name="email" type="email" placeholder="you@example.com" required>
+        <input id="reg-email" name="email" type="email" placeholder="you@example.com" maxlength="254" autocomplete="email" required>
       </div>
 
       <div class="field-row">
         <div class="field">
           <label for="reg-password">Password</label>
-          <input id="reg-password" name="password" type="password" placeholder="••••••••" required>
+          <input id="reg-password" name="password" type="password" placeholder="••••••••" maxlength="256" autocomplete="new-password" required>
         </div>
         <div class="field">
           <label for="reg-password-confirm">Confirm</label>
-          <input id="reg-password-confirm" name="password_confirm" type="password" placeholder="••••••••" required>
+          <input id="reg-password-confirm" name="password_confirm" type="password" placeholder="••••••••" maxlength="256" autocomplete="new-password" required>
         </div>
       </div>
 
       <label class="terms-label">
-        <input type="checkbox" name="terms" required>
+        <input type="checkbox" id="reg-terms" name="terms" required>
         I agree to the <a href="#">Terms of Service</a> and <a href="#">Privacy Policy</a>
       </label>
 
-      <button type="submit" class="btn-accent2">Create Account</button>
+      <button type="submit" id="reg-submit" class="btn-accent2">Create Account</button>
+
+    </form>
+
+    <!-- Step 2: enter the code Cognito emails -->
+    <form id="confirm-form" class="auth-form" novalidate style="display:none;">
+
+      <div class="field">
+        <label for="confirm-code">Verification code</label>
+        <input id="confirm-code" name="code" type="text" inputmode="numeric" placeholder="123456" maxlength="6" autocomplete="one-time-code" required>
+      </div>
+
+      <button type="submit" id="confirm-submit" class="btn-accent2">Verify Email</button>
+      <button type="button" id="resend-code" class="btn-secondary">Resend code</button>
 
     </form>
 
@@ -55,5 +70,105 @@
   </div>
 </main>
 
+<!-- Cognito library + our auth code -->
+<script src="https://unpkg.com/amazon-cognito-identity-js@6.3.12/dist/amazon-cognito-identity.min.js"></script>
+<script src="auth.js"></script>
+
+<script>
+  // Two steps: Step 1 sign up, Step 2 enter the emailed code
+  const msg = document.getElementById("reg-message");
+  const registerForm = document.getElementById("register-form");
+  const confirmForm = document.getElementById("confirm-form");
+  let pendingEmail = "";
+
+  // Switch to Step 2
+  function showConfirmStep(email) {
+    pendingEmail = email;
+    registerForm.style.display = "none";
+    confirmForm.style.display = "";
+    document.getElementById("reg-title").textContent = "Check your email";
+    document.getElementById("reg-subtitle").textContent = "We sent a 6-digit code to " + email + ".";
+  }
+
+  // Sent here from login with an unverified email
+  const confirmParam = new URLSearchParams(location.search).get("confirm");
+  if (confirmParam && EMAIL_RE.test(confirmParam)) showConfirmStep(confirmParam);
+
+  // Step 1: create account
+  registerForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("reg-username").value.trim();
+    const email = document.getElementById("reg-email").value.trim().toLowerCase();
+    const password = document.getElementById("reg-password").value;
+    const confirmPw = document.getElementById("reg-password-confirm").value;
+    const terms = document.getElementById("reg-terms").checked;
+
+    // Input validation
+    if (!USERNAME_RE.test(username)) return showMessage(msg, "Username must be 3–20 letters, numbers, or underscores.");
+    if (!EMAIL_RE.test(email)) return showMessage(msg, "Please enter a valid email.");
+    const pwErr = passwordProblem(password);
+    if (pwErr) return showMessage(msg, pwErr);
+    if (password !== confirmPw) return showMessage(msg, "Passwords don't match.");
+    if (!terms) return showMessage(msg, "Please accept the Terms of Service.");
+
+    // Prevent double-clicks while waiting
+    const btn = document.getElementById("reg-submit");
+    btn.disabled = true;
+    btn.textContent = "Creating account...";
+
+    try {
+      await cognitoSignUp(username, email, password);
+
+      msg.style.display = "none";
+      showConfirmStep(email);
+
+    } catch (err) {
+      if (err.code === "UsernameExistsException") showMessage(msg, "An account with this email already exists. Try logging in.");
+      else if (err.code === "InvalidPasswordException") showMessage(msg, err.message);
+      else showMessage(msg, err.message || "Something went wrong. Please try again.");
+
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Create Account";
+    }
+  });
+
+  // Step 2: verify email code
+  confirmForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+
+    const code = document.getElementById("confirm-code").value.trim();
+    if (!/^\d{6}$/.test(code)) return showMessage(msg, "Enter the 6-digit code from your email.");
+
+    const btn = document.getElementById("confirm-submit");
+    btn.disabled = true;
+
+    try {
+      await cognitoConfirm(pendingEmail, code);
+
+      window.location.href = "login.html?verified=1";
+
+    } catch (err) {
+      if (err.code === "CodeMismatchException") showMessage(msg, "That code is incorrect.");
+      else if (err.code === "ExpiredCodeException") showMessage(msg, "That code expired. Click Resend code.");
+      else showMessage(msg, err.message || "Could not verify. Please try again.");
+
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // Resend code
+  document.getElementById("resend-code").addEventListener("click", async () => {
+    try {
+      await cognitoResendCode(pendingEmail);
+      showMessage(msg, "New code sent. Check your email.", false);
+    } catch (err) {
+      showMessage(msg, err.message || "Could not resend code.");
+    }
+  });
+</script>
+
+<script src="security.js" defer></script>
 </body>
 </html>
