@@ -347,7 +347,7 @@ app.delete(
 // For local testing only: serve the web page from here too.
 // On AWS, Apache serves the page and forwards /api to this server instead.
 // ---------------------------------------------------------------------------
-app.use(express.static(path.join(__dirname, '..', 'Pages')));
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 app.listen(PORT, () => {
   console.log('CoolGames API on port ' + PORT + (MOCK ? ' (MOCK mode)' : '') +
