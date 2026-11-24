@@ -6,8 +6,6 @@
 // Twitch client secret must never be sent to a browser. So the browser calls us,
 // and we call IGDB.
 
-require('dotenv').config();
-const path = require('path');
 const express = require('express');
 const mysql = require('mysql2/promise');
 
@@ -18,10 +16,8 @@ const PORT = process.env.PORT || 3000;
 const CLIENT_ID = process.env.TWITCH_CLIENT_ID;
 const CLIENT_SECRET = process.env.TWITCH_CLIENT_SECRET;
 
-// MOCK=1 serves fake sample games so you can run everything without IGDB keys.
-const MOCK = process.env.MOCK === '1';
-if (!MOCK && (!CLIENT_ID || !CLIENT_SECRET)) {
-  console.error('Set TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET in .env (or run with MOCK=1).');
+if (!CLIENT_ID || !CLIENT_SECRET) {
+  console.error('TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET are not set.');
   process.exit(1);
 }
 
@@ -123,54 +119,6 @@ function formatGame(g) {
 }
 
 // ---------------------------------------------------------------------------
-// Fake data for MOCK=1
-// ---------------------------------------------------------------------------
-
-const MOCK_GENRES = [
-  { id: 8, name: 'Platform' },
-  { id: 9, name: 'Puzzle' },
-  { id: 12, name: 'Role-playing (RPG)' },
-];
-const MOCK_PLATFORMS = [
-  { id: 6, name: 'PC (Microsoft Windows)' },
-  { id: 130, name: 'Nintendo Switch' },
-];
-const MOCK_GAMES = [
-  { id: 1001, name: 'Sample: Pixel Quest', year: 2019, rating: 88, genreIds: [8], platformIds: [6, 130] },
-  { id: 1002, name: 'Sample: Puzzle Garden', year: 2021, rating: 74, genreIds: [9], platformIds: [6] },
-  { id: 1003, name: 'Sample: Dragon Ledger', year: 2016, rating: 91, genreIds: [12], platformIds: [6] },
-  { id: 1004, name: 'Sample: Cloud Hopper', year: 2023, rating: 67, genreIds: [8], platformIds: [130] },
-  { id: 1005, name: 'Sample: Tile Tactics', year: 2012, rating: 80, genreIds: [9, 12], platformIds: [6, 130] },
-].map((g) => ({
-  id: g.id,
-  name: g.name,
-  coverUrl: null,
-  year: g.year,
-  rating: g.rating,
-  genreIds: g.genreIds,
-  platformIds: g.platformIds,
-  genres: g.genreIds.map((id) => MOCK_GENRES.find((x) => x.id === id).name),
-  platforms: g.platformIds.map((id) => MOCK_PLATFORMS.find((x) => x.id === id).name),
-}));
-
-function mockSearch({ q, genre, platform, sort, page }) {
-  let games = MOCK_GAMES.filter(
-    (g) =>
-      g.name.toLowerCase().includes(q.toLowerCase()) &&
-      (!genre || g.genreIds.includes(genre)) &&
-      (!platform || g.platformIds.includes(platform))
-  );
-  const field = { rating: 'rating', newest: 'year', name: 'name' }[sort];
-  games.sort((a, b) => (field === 'name' ? a.name.localeCompare(b.name) : b[field] - a[field]));
-  const start = (page - 1) * PAGE_SIZE;
-  return {
-    page,
-    hasMore: games.length > start + PAGE_SIZE,
-    games: games.slice(start, start + PAGE_SIZE),
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Search routes
 // ---------------------------------------------------------------------------
 
@@ -182,8 +130,6 @@ app.get(
     const platform = toId(req.query.platform);
     const sort = SORTS[req.query.sort] ? req.query.sort : 'rating';
     const page = toId(req.query.page) || 1;
-
-    if (MOCK) return res.json(mockSearch({ q, genre, platform, sort, page }));
 
     // Build the "where" part of the IGDB query one condition at a time.
     // Everything that goes in is either a number or text we cleaned above.
@@ -216,7 +162,6 @@ app.get(
 app.get(
   '/api/genres',
   wrap(async (req, res) => {
-    if (MOCK) return res.json(MOCK_GENRES);
     res.json(await igdb('genres', 'fields name; sort name asc; limit 50;', 3600));
   })
 );
@@ -224,7 +169,6 @@ app.get(
 app.get(
   '/api/platforms',
   wrap(async (req, res) => {
-    if (MOCK) return res.json(MOCK_PLATFORMS);
     // A short list of common platforms instead of every one IGDB knows.
     res.json(
       await igdb('platforms', 'fields name; where id = (6, 3, 14, 48, 167, 49, 169, 130); sort name asc; limit 20;', 3600)
@@ -237,27 +181,7 @@ app.get(
 // ---------------------------------------------------------------------------
 // A game can be in one list per user, so saving it again just moves it.
 
-// Used when no database is configured (local testing). Lost on restart.
-function memoryStore() {
-  const rows = new Map();
-  return {
-    async getAll(userId) {
-      return [...rows.values()]
-        .filter((r) => r.userId === userId)
-        .sort((a, b) => b.addedAt - a.addedAt);
-    },
-    async set(userId, game, list) {
-      const key = userId + ':' + game.igdbId;
-      const old = rows.get(key);
-      rows.set(key, { userId, ...game, list, addedAt: old ? old.addedAt : Date.now() });
-    },
-    async remove(userId, igdbId) {
-      rows.delete(userId + ':' + igdbId);
-    },
-  };
-}
-
-// Used when DB_HOST is set. Every query uses ? placeholders, so user input is
+// Every query uses ? placeholders, so user input is
 // never pasted into the SQL text (this is what stops SQL injection).
 function mysqlStore(pool) {
   return {
@@ -287,17 +211,15 @@ function mysqlStore(pool) {
   };
 }
 
-const store = process.env.DB_HOST
-  ? mysqlStore(
-      mysql.createPool({
-        host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        connectionLimit: 5,
-      })
-    )
-  : memoryStore();
+const store = mysqlStore(
+  mysql.createPool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    connectionLimit: 5,
+  })
+);
 
 // TODO (Milestone 2): there is no login yet, so everyone is user 1.
 // When login exists, return the id of the signed-in user here and nowhere else.
@@ -343,13 +265,6 @@ app.delete(
   })
 );
 
-// ---------------------------------------------------------------------------
-// For local testing only: serve the web page from here too.
-// On AWS, Apache serves the page and forwards /api to this server instead.
-// ---------------------------------------------------------------------------
-app.use(express.static(path.join(__dirname, '..', 'frontend')));
-
 app.listen(PORT, () => {
-  console.log('CoolGames API on port ' + PORT + (MOCK ? ' (MOCK mode)' : '') +
-    (process.env.DB_HOST ? ' with MySQL' : ' with in-memory lists'));
+  console.log('CoolGames API on port ' + PORT);
 });
