@@ -20,7 +20,7 @@ get_secret() {
 }
 field() { node -e 'console.log(JSON.parse(process.argv[1])[process.argv[2]])' "$1" "$2"; }
 
-IGDB=$(get_secret coolgames/igdb)
+IGDB=$(get_secret coolgames/igdb/API)
 export TWITCH_CLIENT_ID=$(field "$IGDB" client_id)
 export TWITCH_CLIENT_SECRET=$(field "$IGDB" client_secret)
 
