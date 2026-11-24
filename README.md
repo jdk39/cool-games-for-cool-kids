@@ -11,7 +11,7 @@ A gaming platform (SaaS) for discovering upcoming games, tracking a backlog of g
 3-tier deployment on AWS:
 - **Presentation** — static frontend
 - **Application** — API servers (auth, friend system, recommendations)
-- **Data** — RDS (PostgreSQL)
+- **Data** — RDS (MySQL)
 
 ## Team
 - Alizeh Hussain
