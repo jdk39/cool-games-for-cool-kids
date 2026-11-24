@@ -10,6 +10,7 @@ require('dotenv').config();
 const path = require('path');
 const express = require('express');
 const mysql = require('mysql2/promise');
+const { CognitoJwtVerifier } = require('aws-jwt-verify');
 
 const app = express();
 app.use(express.json());
@@ -299,21 +300,54 @@ const store = process.env.DB_HOST
     )
   : memoryStore();
 
-// TODO (Milestone 2): there is no login yet, so everyone is user 1.
-// When login exists, return the id of the signed-in user here and nowhere else.
-function getUserId(req) {
-  return 1;
+// ---------------------------------------------------------------------------
+// Who is calling? Cognito handles login. After logging in, the browser sends its
+// login token in the Authorization header. We check the token is real (signed by
+// our Cognito user pool, not expired) and use the user's id from inside it.
+// The list routes below all run requireUser first, so no one can read or change
+// someone else's lists.
+//
+// For testing on your laptop without logging in, set AUTH_DISABLED=1 in .env.
+// Never set it on AWS.
+// ---------------------------------------------------------------------------
+const AUTH_DISABLED = process.env.AUTH_DISABLED === '1';
+
+const verifier = AUTH_DISABLED
+  ? null
+  : CognitoJwtVerifier.create({
+      userPoolId: process.env.COGNITO_USER_POOL_ID || 'us-east-2_kqJtlu8T0',
+      clientId: process.env.COGNITO_CLIENT_ID || '1bf58elkgde695r5fhhjjq1n75',
+      tokenUse: 'id',
+    });
+
+async function requireUser(req, res, next) {
+  if (AUTH_DISABLED) {
+    req.userId = 'local-test-user';
+    return next();
+  }
+  const header = req.get('Authorization') || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) return res.status(401).json({ error: 'Please log in' });
+  try {
+    const payload = await verifier.verify(token);
+    req.userId = payload.sub; // Cognito's permanent id for this user
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Please log in again' });
+  }
 }
 
 app.get(
   '/api/lists',
+  requireUser,
   wrap(async (req, res) => {
-    res.json(await store.getAll(getUserId(req)));
+    res.json(await store.getAll(req.userId));
   })
 );
 
 app.put(
   '/api/lists/:igdbId',
+  requireUser,
   wrap(async (req, res) => {
     const igdbId = toId(req.params.igdbId);
     const { list, name, coverUrl } = req.body || {};
@@ -328,17 +362,18 @@ app.put(
         ? coverUrl.slice(0, 500)
         : null;
 
-    await store.set(getUserId(req), { igdbId, name: cleanName, coverUrl: cleanCover }, list);
+    await store.set(req.userId, { igdbId, name: cleanName, coverUrl: cleanCover }, list);
     res.json({ ok: true });
   })
 );
 
 app.delete(
   '/api/lists/:igdbId',
+  requireUser,
   wrap(async (req, res) => {
     const igdbId = toId(req.params.igdbId);
     if (!igdbId) return res.status(400).json({ error: 'Invalid game id' });
-    await store.remove(getUserId(req), igdbId);
+    await store.remove(req.userId, igdbId);
     res.json({ ok: true });
   })
 );

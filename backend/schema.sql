@@ -3,7 +3,7 @@
 -- in only one list per user: saving it again moves it to the new list.
 
 CREATE TABLE IF NOT EXISTS user_games (
-  user_id    INT NOT NULL,
+  user_id    VARCHAR(64) NOT NULL,  -- the Cognito user id (a long text value, not a number)
   igdb_id    INT NOT NULL,
   game_name  VARCHAR(255) NOT NULL,
   cover_url  VARCHAR(500),

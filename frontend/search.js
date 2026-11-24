@@ -37,10 +37,37 @@ function setStatus(message) {
   statusEl.textContent = message;
 }
 
-// Call our API and return the JSON. Throws if the server says something went wrong.
+// After login, Cognito (see auth.js) keeps the login token in the browser's storage.
+// We read it from there instead of loading the Cognito library on this page, because
+// this page's security policy only allows scripts from our own site.
+const COGNITO_CLIENT_ID = '1bf58elkgde695r5fhhjjq1n75';
+
+function getIdToken() {
+  const prefix = 'CognitoIdentityServiceProvider.' + COGNITO_CLIENT_ID + '.';
+  for (const store of [window.localStorage, window.sessionStorage]) {
+    try {
+      const username = store.getItem(prefix + 'LastAuthUser');
+      const token = username && store.getItem(prefix + username + '.idToken');
+      if (token) return token;
+    } catch (err) {
+      // storage not available: treat as logged out
+    }
+  }
+  return null;
+}
+
+// Call our API and return the JSON. Sends the login token if there is one.
+// Throws if the server says something went wrong.
 async function api(url, options) {
-  const res = await fetch(url, options);
-  if (!res.ok) throw new Error('request failed (' + res.status + ')');
+  const opts = { ...(options || {}) };
+  const token = getIdToken();
+  if (token) opts.headers = { ...(opts.headers || {}), Authorization: 'Bearer ' + token };
+  const res = await fetch(url, opts);
+  if (!res.ok) {
+    const error = new Error('request failed (' + res.status + ')');
+    error.status = res.status;
+    throw error;
+  }
   return res.json();
 }
 
@@ -67,7 +94,11 @@ async function loadSaved() {
     return items;
   } catch (err) {
     saved = {};
-    setStatus('Your lists are not available right now.');
+    setStatus(
+      err.status === 401
+        ? 'Log in to save games to your lists.'
+        : 'Your lists are not available right now.'
+    );
     return [];
   }
 }
@@ -131,7 +162,11 @@ function makeListPicker(game) {
       setStatus(list === '' ? 'Removed from your lists.' : 'Saved to ' + LIST_LABELS[list] + '.');
     } catch (err) {
       select.value = saved[game.id] || '';
-      setStatus('Could not update your list: ' + err.message);
+      setStatus(
+        err.status === 401
+          ? 'Log in to save games to your lists.'
+          : 'Could not update your list: ' + err.message
+      );
     }
   });
 
