@@ -11,19 +11,17 @@ function escapeHTML(value) {
     .replace(/'/g, '&#39;');
 }
 
-// Demo for the home page: shows what the user searched, safely.
+// Home page search box: send the search to the Browse page (search.html?q=...).
+// encodeURIComponent keeps characters like & # < > from breaking the address.
 const searchForm = document.querySelector('.search-form');
-const mainCol = document.querySelector('.main-col');
 
-if (searchForm && mainCol) {
+if (searchForm) {
   const input = searchForm.querySelector('input');
-  const message = document.createElement('p');
-  message.className = 'search-message';
-  mainCol.prepend(message);
 
   searchForm.addEventListener('submit', (event) => {
     event.preventDefault();
-    // textContent shows the text literally — HTML and scripts never run
-    message.textContent = `You searched for: ${input.value}`;
+    const q = input.value.trim();
+    if (q.length < 2) return;
+    window.location.href = 'search.html?q=' + encodeURIComponent(q);
   });
 }
