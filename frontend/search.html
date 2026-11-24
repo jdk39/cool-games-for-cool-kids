@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Find Games - Cool Games for Cool Kids</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="search.css">
+</head>
+<body>
+
+<header class="navbar">
+  <div class="navbar-left">
+    <span class="logo">Cool Games <span>for</span> Cool Kids</span>
+    <nav class="nav-links">
+      <a href="index.html">Home</a>
+      <a href="search.html" class="active">Browse</a>
+      <a href="#">New Releases</a>
+      <a href="#">Community</a>
+    </nav>
+  </div>
+  <div class="navbar-right">
+    <div class="user-chip">
+      <div class="avatar">J</div>
+      <span>Hi, Jordan</span>
+    </div>
+  </div>
+</header>
+
+<main class="search-main">
+  <h1>Find games</h1>
+
+  <!-- Switch between searching and your four personal lists -->
+  <nav id="views" aria-label="Views">
+    <button type="button" data-view="search" class="active">Search</button>
+    <button type="button" data-view="backlog">Backlog</button>
+    <button type="button" data-view="playing">Playing</button>
+    <button type="button" data-view="completed">Completed</button>
+    <button type="button" data-view="wishlist">Wishlist</button>
+  </nav>
+
+  <form id="search-form">
+    <label>Name
+      <input type="search" id="q" maxlength="60" placeholder="Search by title">
+    </label>
+    <label>Genre
+      <select id="genre"><option value="">Any genre</option></select>
+    </label>
+    <label>Platform
+      <select id="platform"><option value="">Any platform</option></select>
+    </label>
+    <label>Sort by
+      <select id="sort">
+        <option value="rating">Highest rated</option>
+        <option value="newest">Newest</option>
+        <option value="name">Name (A to Z)</option>
+      </select>
+    </label>
+    <button type="submit">Search</button>
+  </form>
+
+  <p id="status" role="status"></p>
+  <div id="results"></div>
+
+  <div id="pager">
+    <button type="button" id="prev">Previous</button>
+    <span id="page-label"></span>
+    <button type="button" id="next">Next</button>
+  </div>
+
+  <p class="credit">Game data from IGDB.com</p>
+</main>
+
+<footer class="site-footer">
+  &copy; 2026 Cool Games for Cool Kids &middot; About &middot; Privacy &middot; Contact
+</footer>
+
+<script src="search.js"></script>
+</body>
+</html>
