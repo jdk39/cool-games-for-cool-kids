@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source ~/cool-games-for-cool-kids/infra/config.sh
+source "$(dirname "$0")/config.sh"
 
 ### Target group lookup ###
 TG_ARN=$(aws elbv2 describe-target-groups --names "$TG_NAME" --query 'TargetGroups[0].TargetGroupArn' --output text)
@@ -18,12 +18,17 @@ if [[ -z $CERT_ARN || $CERT_ARN == "None" ]]; then
         exit 1
 fi
 
-### ALB creation ###
-ALB_ARN=$(aws elbv2 create-load-balancer --name "$ALB_NAME" --subnets $SUBNETS --security-groups "$SG_ID" --query 'LoadBalancers[0].LoadBalancerArn' --output text)
-echo "Created ALB"
+### ALB (reuse it if it already exists) ###
+ALB_ARN=$(aws elbv2 describe-load-balancers --names "$ALB_NAME" --query 'LoadBalancers[0].LoadBalancerArn' --output text 2> /dev/null || true)
 
-### Wait for ALB ###
-echo "Load balancer starting. Please wait..."
+if [[ -z $ALB_ARN || $ALB_ARN == "None" ]]; then
+        ALB_ARN=$(aws elbv2 create-load-balancer --name "$ALB_NAME" --subnets $SUBNETS --security-groups "$SG_ID" --query 'LoadBalancers[0].LoadBalancerArn' --output text)
+        echo "Created ALB"
+else
+        echo "ALB already exists, reusing it."
+fi
+
+echo "Waiting for load balancer..."
 if aws elbv2 wait load-balancer-available --load-balancer-arns "$ALB_ARN"; then
         echo "Done."
 else
@@ -31,12 +36,24 @@ else
         exit 1
 fi
 
-### Listeners ###
-echo "Creating listener on port 80"
-aws elbv2 create-listener --load-balancer-arn "$ALB_ARN" --protocol HTTP --port 80 --default-actions Type=forward,TargetGroupArn="$TG_ARN" > /dev/null
+### Listeners (only create the ones that are missing) ###
+LISTEN_80=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[?Port==`80`].ListenerArn | [0]' --output text)
 
-echo "Creating listener on port 443"
-aws elbv2 create-listener --load-balancer-arn "$ALB_ARN" --protocol HTTPS --port 443 --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 --certificates CertificateArn="$CERT_ARN" --default-actions Type=forward,TargetGroupArn="$TG_ARN" > /dev/null
+if [[ -z $LISTEN_80 || $LISTEN_80 == "None" ]]; then
+        echo "Creating listener on port 80"
+        aws elbv2 create-listener --load-balancer-arn "$ALB_ARN" --protocol HTTP --port 80 --default-actions Type=forward,TargetGroupArn="$TG_ARN" > /dev/null
+else
+        echo "Port 80 listener already exists, skipping."
+fi
+
+LISTEN_443=$(aws elbv2 describe-listeners --load-balancer-arn "$ALB_ARN" --query 'Listeners[?Port==`443`].ListenerArn | [0]' --output text)
+
+if [[ -z $LISTEN_443 || $LISTEN_443 == "None" ]]; then
+        echo "Creating listener on port 443"
+        aws elbv2 create-listener --load-balancer-arn "$ALB_ARN" --protocol HTTPS --port 443 --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 --certificates CertificateArn="$CERT_ARN" --default-actions Type=forward,TargetGroupArn="$TG_ARN" > /dev/null
+else
+        echo "Port 443 listener already exists, skipping."
+fi
 
 ### Elastic IPs ###
 for NAME in $INSTANCE_NAMES; do

@@ -1,6 +1,6 @@
 #!/bin/bash
 set -e
-source ~/cool-games-for-cool-kids/infra/config.sh
+source "$(dirname "$0")/config.sh"
 
 echo "Beginning deletion..."
 
